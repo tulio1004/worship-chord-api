@@ -16,10 +16,12 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
 # Install chord-extractor (Chordino VAMP plugin, Linux 64-bit only).
-# chord-extractor bundles nnls-chroma.so and auto-sets VAMP_PATH on Linux.
+# chord-extractor bundles nnls-chroma.so and manages VAMP_PATH internally.
+# The separate 'vamp' Python package is NOT needed — it requires native SDK headers
+# and would fail to compile in a slim image.
 # Requires Python <3.12 — this image uses 3.11 so it installs fine.
 # Falls back to librosa if unavailable (see ChordinoEngine in chords.py).
-RUN pip install --no-cache-dir chord-extractor vamp
+RUN pip install --no-cache-dir chord-extractor
 
 # Copy application code
 COPY . .
