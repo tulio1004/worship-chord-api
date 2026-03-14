@@ -57,6 +57,9 @@ class YouTubeDownloader:
             "--output", output_template,
             "--no-progress",
             "--quiet",
+            # Use Android client to bypass YouTube bot detection on server IPs.
+            # Android player client doesn't require JS runtime or cookies.
+            "--extractor-args", "youtube:player_client=android,web",
             url,
         ]
 
@@ -112,6 +115,7 @@ class YouTubeDownloader:
             "--dump-json",
             "--no-playlist",
             "--quiet",
+            "--extractor-args", "youtube:player_client=android,web",
             url,
         ]
         try:
