@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Worship Chord Tool</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f0f13;
+      color: #e8e8f0;
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 1.7rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      color: #fff;
+      margin-bottom: 0.3rem;
+    }
+
+    .subtitle {
+      text-align: center;
+      font-size: 0.85rem;
+      color: #888;
+      margin-bottom: 2rem;
+    }
+
+    .card {
+      background: #1a1a24;
+      border: 1px solid #2a2a38;
+      border-radius: 12px;
+      padding: 1.5rem;
+      max-width: 860px;
+      margin: 0 auto 1.5rem auto;
+    }
+
+    .card h2 {
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #666;
+      margin-bottom: 1rem;
+    }
+
+    label {
+      display: block;
+      font-size: 0.82rem;
+      color: #aaa;
+      margin-bottom: 0.3rem;
+    }
+
+    input[type="text"], textarea, select {
+      width: 100%;
+      background: #0f0f18;
+      border: 1px solid #2e2e42;
+      border-radius: 7px;
+      color: #e8e8f0;
+      padding: 0.6rem 0.8rem;
+      font-size: 0.9rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s;
+      margin-bottom: 1rem;
+    }
+
+    input[type="text"]:focus, textarea:focus { border-color: #6c63ff; }
+    textarea { resize: vertical; min-height: 80px; }
+
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+
+    .toggle-row {
+      display: flex;
+      gap: 2rem;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+
+    .toggle-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      cursor: pointer;
+      font-size: 0.85rem;
+      color: #ccc;
+    }
+
+    .toggle-item input[type="checkbox"] {
+      width: 16px; height: 16px;
+      accent-color: #6c63ff;
+      cursor: pointer;
+      margin: 0;
+    }
+
+    button[type="submit"] {
+      width: 100%;
+      padding: 0.75rem;
+      background: #6c63ff;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    button[type="submit"]:hover  { background: #5a52e0; }
+    button[type="submit"]:active { transform: scale(0.99); }
+    button[type="submit"]:disabled { background: #3a3a52; color: #666; cursor: not-allowed; }
+
+    #status {
+      text-align: center;
+      font-size: 0.9rem;
+      color: #888;
+      min-height: 1.4rem;
+      margin-bottom: 0.5rem;
+    }
+
+    #status.error   { color: #f87171; }
+    #status.loading { color: #a78bfa; }
+
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid #6c63ff;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #results { display: none; }
+
+    /* ── Metadata bar ── */
+    .meta-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.2rem;
+      font-size: 0.9rem;
+      color: #bbb;
+    }
+    .meta-bar strong { color: #fff; font-weight: 600; }
+
+    /* ── Chord sheet ── */
+    /*
+      Classic chord-chart format:
+        D        Am       G
+        Amazing  grace    how sweet
+
+      Each block is two lines in a monospace pre block.
+      Chord names are purple/bold; lyric lines are white.
+    */
+    .chord-sheet {
+      font-family: 'Courier New', 'Consolas', 'Lucida Console', monospace;
+      font-size: 0.97rem;
+      line-height: 1.3;
+    }
+
+    .chord-block {
+      margin-bottom: 1.1rem;
+    }
+
+    /* The chord name row — purple, bold */
+    .chord-row {
+      color: #a78bfa;
+      font-weight: 700;
+      white-space: pre;
+      min-height: 1.1em;
+      letter-spacing: 0;
+    }
+
+    /* The lyric row — white */
+    .lyric-row {
+      color: #e8e8f0;
+      white-space: pre;
+      letter-spacing: 0;
+    }
+
+    /* Empty chord row placeholder keeps spacing consistent */
+    .chord-row:empty::before { content: '\00a0'; }
+
+    /* ── Chord timeline ── */
+    .timeline { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+    .chord-pill {
+      background: #1e1e2e;
+      border: 1px solid #3a3a52;
+      border-radius: 6px;
+      padding: 0.3rem 0.6rem;
+      font-size: 0.8rem;
+      font-family: monospace;
+    }
+
+    .chord-pill .label { color: #a78bfa; font-weight: 700; }
+    .chord-pill .time  { color: #555; font-size: 0.7rem; margin-left: 4px; }
+
+    /* ── Transcription ── */
+    .transcription-text {
+      font-size: 0.88rem;
+      line-height: 1.8;
+      color: #ccc;
+      white-space: pre-wrap;
+    }
+
+    /* ── Diagnostics ── */
+    .diag-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 0.75rem;
+    }
+
+    .diag-item {
+      background: #0f0f18;
+      border: 1px solid #2a2a38;
+      border-radius: 7px;
+      padding: 0.5rem 0.75rem;
+    }
+
+    .diag-item .key { font-size: 0.72rem; color: #666; text-transform: uppercase; letter-spacing: 0.05em; }
+    .diag-item .val { font-size: 0.9rem; color: #ccc; font-weight: 500; margin-top: 2px; }
+
+    .warning-box {
+      background: #2a1a00;
+      border: 1px solid #6b3a00;
+      border-radius: 7px;
+      padding: 0.5rem 0.8rem;
+      font-size: 0.82rem;
+      color: #ffb347;
+      margin-top: 0.75rem;
+    }
+
+    .section-collapse summary {
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.85rem;
+      color: #888;
+      user-select: none;
+    }
+
+    .section-collapse summary::-webkit-details-marker { display: none; }
+    .section-collapse summary::before { content: '▶'; font-size: 0.6rem; transition: transform 0.15s; }
+    .section-collapse[open] summary::before { transform: rotate(90deg); }
+    .section-collapse summary:hover { color: #bbb; }
+    .section-collapse .inner { margin-top: 1rem; }
+
+    @media (max-width: 540px) {
+      .row { grid-template-columns: 1fr; }
+      .toggle-row { flex-direction: column; align-items: flex-start; gap: 0.75rem; }
+    }
+  </style>
+</head>
+<body>
+
+<h1>Worship Chord Tool</h1>
+<p class="subtitle">Paste a YouTube link — get chords over lyrics</p>
+
+<!-- ── Form ── -->
+<div class="card">
+  <form id="form">
+    <label for="youtube_url">YouTube URL *</label>
+    <input type="text" id="youtube_url" name="youtube_url"
+           placeholder="https://www.youtube.com/watch?v=..." required />
+
+    <div class="row">
+      <div>
+        <label for="title">Song title (optional)</label>
+        <input type="text" id="title" name="title" placeholder="e.g. Amazing Grace" />
+      </div>
+      <div>
+        <label for="artist">Artist (optional)</label>
+        <input type="text" id="artist" name="artist" placeholder="e.g. Chris Tomlin" />
+      </div>
+    </div>
+
+    <label for="language">Language (optional — helps transcription accuracy)</label>
+    <input type="text" id="language" name="language" placeholder="en, pt, es, fr … leave blank for auto-detect" />
+
+    <label for="transcription">Lyrics / transcription (optional — paste if you have them)</label>
+    <textarea id="transcription" name="transcription"
+              placeholder="Paste full lyrics here to skip auto-transcription..."></textarea>
+
+    <div class="toggle-row">
+      <label class="toggle-item">
+        <input type="checkbox" id="prefer_sharp_keys" checked />
+        Prefer sharp keys (C# not Db)
+      </label>
+      <label class="toggle-item">
+        <input type="checkbox" id="cleanup_lyrics" checked />
+        Clean up transcription
+      </label>
+    </div>
+
+    <div id="status"></div>
+    <button type="submit" id="submitBtn">Extract Chords</button>
+  </form>
+</div>
+
+<!-- ── Results ── -->
+<div id="results">
+
+  <!-- Metadata -->
+  <div class="card" id="metaCard">
+    <h2>Song Info</h2>
+    <div class="meta-bar" id="metaBar"></div>
+  </div>
+
+  <!-- Chord sheet — main output -->
+  <div class="card">
+    <h2>Chords over Lyrics</h2>
+    <div class="chord-sheet" id="chordSheet"></div>
+  </div>
+
+  <!-- Chord timeline (collapsible) -->
+  <div class="card">
+    <details class="section-collapse">
+      <summary>Chord Timeline</summary>
+      <div class="inner">
+        <div class="timeline" id="timeline"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- Transcription (collapsible) -->
+  <div class="card">
+    <details class="section-collapse">
+      <summary>Transcription</summary>
+      <div class="inner">
+        <div class="transcription-text" id="transcriptionText"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- Diagnostics (collapsible) -->
+  <div class="card">
+    <details class="section-collapse">
+      <summary>Diagnostics</summary>
+      <div class="inner">
+        <div class="diag-grid" id="diagGrid"></div>
+        <div id="warningsBox"></div>
+      </div>
+    </details>
+  </div>
+
+</div>
+
+<script>
+  const form      = document.getElementById('form');
+  const submitBtn = document.getElementById('submitBtn');
+  const statusEl  = document.getElementById('status');
+  const resultsEl = document.getElementById('results');
+
+  // ── Two-line chord rendering ────────────────────────────────────────────
+  //
+  // Input:  "[D]Eu me [Am]aproximei [Bm]silêncio"
+  // Output:
+  //   chordLine: "D     Am          Bm"
+  //   lyricLine: "Eu me aproximei   silêncio"
+  //
+  // Chord names sit directly above the word they belong to.
+  // When a chord name is longer than the gap before the next word,
+  // the lyric is nudged right to prevent visual overlap.
+  //
+  function buildChordLyricLines(displayLine) {
+    if (!displayLine) return { chordLine: '', lyricLine: '' };
+
+    const parts = displayLine.split(/(\[[^\]]+\])/);
+    let chordLine = '';
+    let lyricLine = '';
+
+    for (const part of parts) {
+      if (/^\[[^\]]+\]$/.test(part)) {
+        // ── Chord token ──
+        const label = part.slice(1, -1);
+        const desiredCol = lyricLine.length;
+
+        if (chordLine.length > desiredCol) {
+          // Previous chord name overhangs — push BOTH lines forward so this
+          // chord starts cleanly after the previous one (+ 1 space gap).
+          const newCol = chordLine.length + 1;
+          while (lyricLine.length < newCol)  lyricLine  += ' ';
+          while (chordLine.length < newCol)  chordLine  += ' ';
+        } else {
+          // Normal: pad chord line to the current lyric position.
+          while (chordLine.length < desiredCol) chordLine += ' ';
+        }
+
+        chordLine += label;
+
+      } else {
+        // ── Lyric text ──
+        // If chord overhangs past lyricLine, pad lyricLine first.
+        while (lyricLine.length < chordLine.length) lyricLine += ' ';
+        lyricLine += part;
+      }
+    }
+
+    return {
+      chordLine: chordLine.trimEnd(),
+      lyricLine: lyricLine.trimEnd(),
+    };
+  }
+
+  // ── Status helpers ───────────────────────────────────────────────────────
+  function setStatus(msg, cls = '') {
+    statusEl.className = cls;
+    statusEl.innerHTML = msg;
+  }
+
+  function setLoading(msg) {
+    setStatus(`<span class="spinner"></span>${msg}`, 'loading');
+    submitBtn.disabled = true;
+  }
+
+  function clearLoading() {
+    setStatus('');
+    submitBtn.disabled = false;
+  }
+
+  // ── Render results ───────────────────────────────────────────────────────
+  function render(data) {
+    resultsEl.style.display = 'block';
+    resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    // Metadata
+    const meta = data.metadata;
+    const inp  = data.input;
+    document.getElementById('metaBar').innerHTML = [
+      meta.title  ? `<span><strong>${escHtml(meta.title)}</strong></span>` : '',
+      meta.artist ? `<span>by <strong>${escHtml(meta.artist)}</strong></span>` : '',
+      meta.duration_seconds
+        ? `<span>Duration: <strong>${formatDur(meta.duration_seconds)}</strong></span>`
+        : '',
+      inp.language
+        ? `<span>Language: <strong>${escHtml(inp.language)}</strong></span>`
+        : '',
+    ].filter(Boolean).join('');
+
+    // ── Chord sheet ──
+    const blocks = data.alignment?.blocks ?? [];
+    const sheet  = document.getElementById('chordSheet');
+
+    if (blocks.length === 0) {
+      sheet.innerHTML = '<span style="color:#555">No alignment blocks returned.</span>';
+    } else {
+      const html = blocks.map(b => {
+        const { chordLine, lyricLine } = buildChordLyricLines(b.display_line);
+        return `<div class="chord-block">`
+          + `<div class="chord-row">${escHtml(chordLine)}</div>`
+          + `<div class="lyric-row">${escHtml(lyricLine)}</div>`
+          + `</div>`;
+      }).join('');
+      sheet.innerHTML = html;
+    }
+
+    // Chord timeline
+    const chords = data.chords ?? [];
+    document.getElementById('timeline').innerHTML = chords.length
+      ? chords.map(c =>
+          `<div class="chord-pill">`
+          + `<span class="label">${escHtml(c.label)}</span>`
+          + `<span class="time">${c.start.toFixed(1)}s–${c.end.toFixed(1)}s</span>`
+          + `</div>`
+        ).join('')
+      : '<span style="color:#555">No chords detected.</span>';
+
+    // Transcription
+    const tx = data.transcription;
+    document.getElementById('transcriptionText').textContent =
+      tx?.cleaned_text || tx?.raw_text || '(none)';
+
+    // Diagnostics
+    const d = data.diagnostics ?? {};
+    document.getElementById('diagGrid').innerHTML = [
+      { key: 'Processing time', val: d.processing_seconds != null ? `${d.processing_seconds}s` : '—' },
+      { key: 'Chord engine',    val: d.chord_engine    ?? '—' },
+      { key: 'Transcription',   val: d.transcription_engine ?? '—' },
+      { key: 'Download engine', val: d.download_engine ?? '—' },
+      { key: 'Chord events',    val: chords.length },
+      { key: 'Lyric segments',  val: tx?.segments?.length ?? 0 },
+    ].map(item =>
+      `<div class="diag-item">`
+      + `<div class="key">${item.key}</div>`
+      + `<div class="val">${escHtml(String(item.val))}</div>`
+      + `</div>`
+    ).join('');
+
+    const warnings = d.warnings ?? [];
+    document.getElementById('warningsBox').innerHTML = warnings.length
+      ? warnings.map(w => `<div class="warning-box">⚠ ${escHtml(w)}</div>`).join('')
+      : '';
+  }
+
+  // ── Submit handler ───────────────────────────────────────────────────────
+  const STATUS_MSGS = [
+    'Downloading audio…',
+    'Normalising audio…',
+    'Extracting chords…',
+    'Transcribing lyrics…',
+    'Aligning chords to lyrics…',
+  ];
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    resultsEl.style.display = 'none';
+
+    const url           = document.getElementById('youtube_url').value.trim();
+    const transcription = document.getElementById('transcription').value.trim();
+    const language      = document.getElementById('language').value.trim();
+    const title         = document.getElementById('title').value.trim();
+    const artist        = document.getElementById('artist').value.trim();
+    const preferSharps  = document.getElementById('prefer_sharp_keys').checked;
+    const cleanupLyrics = document.getElementById('cleanup_lyrics').checked;
+
+    if (!url) { setStatus('Please enter a YouTube URL.', 'error'); return; }
+
+    setLoading(STATUS_MSGS[0]);
+
+    const payload = { youtube_url: url, prefer_sharp_keys: preferSharps, cleanup_lyrics: cleanupLyrics };
+    if (transcription) payload.transcription = transcription;
+    if (language)      payload.language      = language;
+    if (title)         payload.title         = title;
+    if (artist)        payload.artist        = artist;
+
+    let msgIdx = 0;
+    const timer = setInterval(() => {
+      msgIdx = Math.min(msgIdx + 1, STATUS_MSGS.length - 1);
+      setLoading(STATUS_MSGS[msgIdx]);
+    }, 8000);
+
+    try {
+      const res  = await fetch('/process-youtube', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(payload),
+      });
+      clearInterval(timer);
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setStatus(`Error: ${data?.error?.message ?? `HTTP ${res.status}`}`, 'error');
+        clearLoading();
+        return;
+      }
+
+      clearLoading();
+      render(data);
+
+    } catch (err) {
+      clearInterval(timer);
+      clearLoading();
+      setStatus(`Network error: ${err.message}`, 'error');
+    }
+  });
+
+  // ── Utilities ────────────────────────────────────────────────────────────
+  function escHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function formatDur(secs) {
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  }
+</script>
+</body>
+</html>
