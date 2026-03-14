@@ -3,7 +3,8 @@
 import subprocess
 import logging
 import json
-import re
+import tempfile
+import os
 from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass
@@ -22,6 +23,23 @@ class DownloadResult:
 
 class YouTubeDownloadError(Exception):
     pass
+
+
+def _cookies_args() -> list[str]:
+    """Return --cookies <tmpfile> args if YOUTUBE_COOKIES env var is set."""
+    from app.core.config import settings
+    cookies = settings.youtube_cookies.strip()
+    if not cookies:
+        return []
+    # Write to a temp file; caller is responsible for cleanup
+    fd, path = tempfile.mkstemp(suffix=".txt", prefix="yt_cookies_")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(cookies)
+    except Exception:
+        os.unlink(path)
+        raise
+    return ["--cookies", path]
 
 
 class YouTubeDownloader:
@@ -49,6 +67,7 @@ class YouTubeDownloader:
             )
 
         output_template = str(output_dir / "%(id)s.%(ext)s")
+        cookies_args = _cookies_args()
 
         cmd = [
             "yt-dlp",
@@ -57,11 +76,8 @@ class YouTubeDownloader:
             "--output", output_template,
             "--no-progress",
             "--quiet",
-            # Use Android client to bypass YouTube bot detection on server IPs.
-            # Android player client doesn't require JS runtime or cookies.
-            "--extractor-args", "youtube:player_client=android,web",
             url,
-        ]
+        ] + cookies_args
 
         logger.debug(f"yt-dlp command: {' '.join(cmd)}")
 
@@ -110,14 +126,14 @@ class YouTubeDownloader:
 
     def _fetch_metadata(self, url: str) -> dict:
         """Fetch video metadata without downloading."""
+        cookies_args = _cookies_args()
         cmd = [
             "yt-dlp",
             "--dump-json",
             "--no-playlist",
             "--quiet",
-            "--extractor-args", "youtube:player_client=android,web",
             url,
-        ]
+        ] + cookies_args
         try:
             result = subprocess.run(
                 cmd,

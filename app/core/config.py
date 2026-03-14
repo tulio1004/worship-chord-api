@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     # Chord engine
     chord_engine: Literal["auto", "chordino", "librosa"] = Field(default="auto", alias="CHORD_ENGINE")
 
+    # YouTube cookies (Netscape cookies.txt format, optional).
+    # Required on server IPs blocked by YouTube bot detection.
+    # Export from your browser with the "Get cookies.txt LOCALLY" extension,
+    # then set YOUTUBE_COOKIES to the file contents in Railway env vars.
+    youtube_cookies: str = Field(default="", alias="YOUTUBE_COOKIES")
+
     # App version
     version: str = "1.0.0"
     app_name: str = "Worship Chord API"
