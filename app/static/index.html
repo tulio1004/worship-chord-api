@@ -49,6 +49,33 @@
       margin-bottom: 1rem;
     }
 
+    /* ── Tabs ── */
+    .tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 1.5rem;
+      border-bottom: 1px solid #2a2a38;
+    }
+
+    .tab-btn {
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      padding: 0.6rem 1.2rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #666;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+      margin-bottom: -1px;
+    }
+
+    .tab-btn:hover { color: #aaa; }
+    .tab-btn.active { color: #a78bfa; border-bottom-color: #6c63ff; }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
     label {
       display: block;
       font-size: 0.82rem;
@@ -72,6 +99,22 @@
 
     input[type="text"]:focus, textarea:focus { border-color: #6c63ff; }
     textarea { resize: vertical; min-height: 80px; }
+
+    /* File input */
+    .file-drop {
+      border: 2px dashed #2e2e42;
+      border-radius: 8px;
+      padding: 1.5rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      margin-bottom: 1rem;
+    }
+    .file-drop:hover, .file-drop.dragover { border-color: #6c63ff; background: #15152a; }
+    .file-drop input[type="file"] { display: none; }
+    .file-drop .drop-label { font-size: 0.9rem; color: #888; }
+    .file-drop .drop-label strong { color: #a78bfa; }
+    .file-drop .file-name { font-size: 0.85rem; color: #a78bfa; margin-top: 0.4rem; }
 
     .row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 
@@ -152,25 +195,14 @@
     .meta-bar strong { color: #fff; font-weight: 600; }
 
     /* ── Chord sheet ── */
-    /*
-      Classic chord-chart format:
-        D        Am       G
-        Amazing  grace    how sweet
-
-      Each block is two lines in a monospace pre block.
-      Chord names are purple/bold; lyric lines are white.
-    */
     .chord-sheet {
       font-family: 'Courier New', 'Consolas', 'Lucida Console', monospace;
       font-size: 0.97rem;
       line-height: 1.3;
     }
 
-    .chord-block {
-      margin-bottom: 1.1rem;
-    }
+    .chord-block { margin-bottom: 1.1rem; }
 
-    /* The chord name row — purple, bold */
     .chord-row {
       color: #a78bfa;
       font-weight: 700;
@@ -179,14 +211,12 @@
       letter-spacing: 0;
     }
 
-    /* The lyric row — white */
     .lyric-row {
       color: #e8e8f0;
       white-space: pre;
       letter-spacing: 0;
     }
 
-    /* Empty chord row placeholder keeps spacing consistent */
     .chord-row:empty::before { content: '\00a0'; }
 
     /* ── Chord timeline ── */
@@ -265,65 +295,81 @@
 <body>
 
 <h1>Worship Chord Tool</h1>
-<p class="subtitle">Paste a YouTube link — get chords over lyrics</p>
+<p class="subtitle">Extract chords and lyrics from worship songs</p>
 
-<!-- ── Form ── -->
+<!-- ── Form card ── -->
 <div class="card">
-  <form id="form">
-    <label for="youtube_url">YouTube URL *</label>
-    <input type="text" id="youtube_url" name="youtube_url"
-           placeholder="https://www.youtube.com/watch?v=..." required />
 
-    <div class="row">
-      <div>
-        <label for="title">Song title (optional)</label>
-        <input type="text" id="title" name="title" placeholder="e.g. Amazing Grace" />
-      </div>
-      <div>
-        <label for="artist">Artist (optional)</label>
-        <input type="text" id="artist" name="artist" placeholder="e.g. Chris Tomlin" />
-      </div>
+  <!-- Tabs -->
+  <div class="tabs">
+    <button type="button" class="tab-btn active" data-tab="yt">YouTube URL</button>
+    <button type="button" class="tab-btn" data-tab="upload">Upload Audio File</button>
+  </div>
+
+  <!-- Shared optional fields -->
+  <div class="row">
+    <div>
+      <label for="title">Song title (optional)</label>
+      <input type="text" id="title" placeholder="e.g. Amazing Grace" />
     </div>
-
-    <label for="language">Language (optional — helps transcription accuracy)</label>
-    <input type="text" id="language" name="language" placeholder="en, pt, es, fr … leave blank for auto-detect" />
-
-    <label for="transcription">Lyrics / transcription (optional — paste if you have them)</label>
-    <textarea id="transcription" name="transcription"
-              placeholder="Paste full lyrics here to skip auto-transcription..."></textarea>
-
-    <div class="toggle-row">
-      <label class="toggle-item">
-        <input type="checkbox" id="prefer_sharp_keys" checked />
-        Prefer sharp keys (C# not Db)
-      </label>
-      <label class="toggle-item">
-        <input type="checkbox" id="cleanup_lyrics" checked />
-        Clean up transcription
-      </label>
+    <div>
+      <label for="artist">Artist (optional)</label>
+      <input type="text" id="artist" placeholder="e.g. Chris Tomlin" />
     </div>
+  </div>
 
+  <label for="language">Language (optional — helps transcription accuracy)</label>
+  <input type="text" id="language" placeholder="en, pt, es, fr … leave blank for auto-detect" />
+
+  <label for="transcription">Lyrics / transcription (optional — paste if you have them)</label>
+  <textarea id="transcription" placeholder="Paste full lyrics here to skip auto-transcription..."></textarea>
+
+  <div class="toggle-row">
+    <label class="toggle-item">
+      <input type="checkbox" id="prefer_sharp_keys" checked />
+      Prefer sharp keys (C# not Db)
+    </label>
+    <label class="toggle-item">
+      <input type="checkbox" id="cleanup_lyrics" checked />
+      Clean up transcription
+    </label>
+  </div>
+
+  <!-- YouTube tab -->
+  <div class="tab-panel active" id="tab-yt">
+    <label for="youtube_url">YouTube URL</label>
+    <input type="text" id="youtube_url" placeholder="https://www.youtube.com/watch?v=..." />
     <div id="status"></div>
-    <button type="submit" id="submitBtn">Extract Chords</button>
-  </form>
+    <button type="submit" id="submitYt">Extract Chords from YouTube</button>
+  </div>
+
+  <!-- Upload tab -->
+  <div class="tab-panel" id="tab-upload">
+    <label>Audio file (mp3, m4a, wav, flac, ogg, opus, aac, webm)</label>
+    <div class="file-drop" id="fileDrop">
+      <input type="file" id="audioFile" accept=".mp3,.m4a,.wav,.flac,.ogg,.opus,.aac,.webm" />
+      <div class="drop-label">Drag & drop or <strong>click to browse</strong></div>
+      <div class="file-name" id="fileName"></div>
+    </div>
+    <div id="statusUpload"></div>
+    <button type="button" id="submitUpload">Extract Chords from File</button>
+  </div>
+
 </div>
 
 <!-- ── Results ── -->
 <div id="results">
 
-  <!-- Metadata -->
   <div class="card" id="metaCard">
     <h2>Song Info</h2>
     <div class="meta-bar" id="metaBar"></div>
   </div>
 
-  <!-- Chord sheet — main output -->
   <div class="card">
     <h2>Chords over Lyrics</h2>
     <div class="chord-sheet" id="chordSheet"></div>
   </div>
 
-  <!-- Chord timeline (collapsible) -->
   <div class="card">
     <details class="section-collapse">
       <summary>Chord Timeline</summary>
@@ -333,7 +379,6 @@
     </details>
   </div>
 
-  <!-- Transcription (collapsible) -->
   <div class="card">
     <details class="section-collapse">
       <summary>Transcription</summary>
@@ -343,7 +388,6 @@
     </details>
   </div>
 
-  <!-- Diagnostics (collapsible) -->
   <div class="card">
     <details class="section-collapse">
       <summary>Diagnostics</summary>
@@ -357,115 +401,111 @@
 </div>
 
 <script>
-  const form      = document.getElementById('form');
-  const submitBtn = document.getElementById('submitBtn');
-  const statusEl  = document.getElementById('status');
-  const resultsEl = document.getElementById('results');
+  // ── Tab switching ─────────────────────────────────────────────────────────
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    });
+  });
 
-  // ── Two-line chord rendering ────────────────────────────────────────────
-  //
-  // Input:  "[D]Eu me [Am]aproximei [Bm]silêncio"
-  // Output:
-  //   chordLine: "D     Am          Bm"
-  //   lyricLine: "Eu me aproximei   silêncio"
-  //
-  // Chord names sit directly above the word they belong to.
-  // When a chord name is longer than the gap before the next word,
-  // the lyric is nudged right to prevent visual overlap.
-  //
+  // ── File drop zone ────────────────────────────────────────────────────────
+  const fileDrop  = document.getElementById('fileDrop');
+  const fileInput = document.getElementById('audioFile');
+  const fileNameEl = document.getElementById('fileName');
+
+  fileDrop.addEventListener('click', () => fileInput.click());
+
+  fileDrop.addEventListener('dragover', e => { e.preventDefault(); fileDrop.classList.add('dragover'); });
+  fileDrop.addEventListener('dragleave', () => fileDrop.classList.remove('dragover'));
+  fileDrop.addEventListener('drop', e => {
+    e.preventDefault();
+    fileDrop.classList.remove('dragover');
+    if (e.dataTransfer.files[0]) {
+      fileInput.files = e.dataTransfer.files;
+      fileNameEl.textContent = e.dataTransfer.files[0].name;
+    }
+  });
+
+  fileInput.addEventListener('change', () => {
+    fileNameEl.textContent = fileInput.files[0]?.name ?? '';
+  });
+
+  // ── Two-line chord rendering ──────────────────────────────────────────────
   function buildChordLyricLines(displayLine) {
     if (!displayLine) return { chordLine: '', lyricLine: '' };
-
     const parts = displayLine.split(/(\[[^\]]+\])/);
-    let chordLine = '';
-    let lyricLine = '';
-
+    let chordLine = '', lyricLine = '';
     for (const part of parts) {
       if (/^\[[^\]]+\]$/.test(part)) {
-        // ── Chord token ──
         const label = part.slice(1, -1);
         const desiredCol = lyricLine.length;
-
         if (chordLine.length > desiredCol) {
-          // Previous chord name overhangs — push BOTH lines forward so this
-          // chord starts cleanly after the previous one (+ 1 space gap).
           const newCol = chordLine.length + 1;
-          while (lyricLine.length < newCol)  lyricLine  += ' ';
-          while (chordLine.length < newCol)  chordLine  += ' ';
+          while (lyricLine.length < newCol) lyricLine += ' ';
+          while (chordLine.length < newCol) chordLine += ' ';
         } else {
-          // Normal: pad chord line to the current lyric position.
           while (chordLine.length < desiredCol) chordLine += ' ';
         }
-
         chordLine += label;
-
       } else {
-        // ── Lyric text ──
-        // If chord overhangs past lyricLine, pad lyricLine first.
         while (lyricLine.length < chordLine.length) lyricLine += ' ';
         lyricLine += part;
       }
     }
-
-    return {
-      chordLine: chordLine.trimEnd(),
-      lyricLine: lyricLine.trimEnd(),
-    };
+    return { chordLine: chordLine.trimEnd(), lyricLine: lyricLine.trimEnd() };
   }
 
-  // ── Status helpers ───────────────────────────────────────────────────────
-  function setStatus(msg, cls = '') {
-    statusEl.className = cls;
-    statusEl.innerHTML = msg;
+  // ── Status helpers ────────────────────────────────────────────────────────
+  function setStatus(elId, msg, cls = '') {
+    const el = document.getElementById(elId);
+    el.className = cls;
+    el.innerHTML = msg;
   }
 
-  function setLoading(msg) {
-    setStatus(`<span class="spinner"></span>${msg}`, 'loading');
-    submitBtn.disabled = true;
+  function setLoading(elId, btnEl, msg) {
+    setStatus(elId, `<span class="spinner"></span>${msg}`, 'loading');
+    btnEl.disabled = true;
   }
 
-  function clearLoading() {
-    setStatus('');
-    submitBtn.disabled = false;
+  function clearLoading(elId, btnEl) {
+    setStatus(elId, '');
+    btnEl.disabled = false;
   }
 
-  // ── Render results ───────────────────────────────────────────────────────
+  // ── Render results ────────────────────────────────────────────────────────
   function render(data) {
+    const resultsEl = document.getElementById('results');
     resultsEl.style.display = 'block';
     resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-    // Metadata
     const meta = data.metadata;
     const inp  = data.input;
     document.getElementById('metaBar').innerHTML = [
       meta.title  ? `<span><strong>${escHtml(meta.title)}</strong></span>` : '',
       meta.artist ? `<span>by <strong>${escHtml(meta.artist)}</strong></span>` : '',
       meta.duration_seconds
-        ? `<span>Duration: <strong>${formatDur(meta.duration_seconds)}</strong></span>`
-        : '',
+        ? `<span>Duration: <strong>${formatDur(meta.duration_seconds)}</strong></span>` : '',
       inp.language
-        ? `<span>Language: <strong>${escHtml(inp.language)}</strong></span>`
-        : '',
+        ? `<span>Language: <strong>${escHtml(inp.language)}</strong></span>` : '',
     ].filter(Boolean).join('');
 
-    // ── Chord sheet ──
     const blocks = data.alignment?.blocks ?? [];
     const sheet  = document.getElementById('chordSheet');
-
     if (blocks.length === 0) {
       sheet.innerHTML = '<span style="color:#555">No alignment blocks returned.</span>';
     } else {
-      const html = blocks.map(b => {
+      sheet.innerHTML = blocks.map(b => {
         const { chordLine, lyricLine } = buildChordLyricLines(b.display_line);
         return `<div class="chord-block">`
           + `<div class="chord-row">${escHtml(chordLine)}</div>`
           + `<div class="lyric-row">${escHtml(lyricLine)}</div>`
           + `</div>`;
       }).join('');
-      sheet.innerHTML = html;
     }
 
-    // Chord timeline
     const chords = data.chords ?? [];
     document.getElementById('timeline').innerHTML = chords.length
       ? chords.map(c =>
@@ -476,12 +516,10 @@
         ).join('')
       : '<span style="color:#555">No chords detected.</span>';
 
-    // Transcription
     const tx = data.transcription;
     document.getElementById('transcriptionText').textContent =
       tx?.cleaned_text || tx?.raw_text || '(none)';
 
-    // Diagnostics
     const d = data.diagnostics ?? {};
     document.getElementById('diagGrid').innerHTML = [
       { key: 'Processing time', val: d.processing_seconds != null ? `${d.processing_seconds}s` : '—' },
@@ -497,82 +535,124 @@
       + `</div>`
     ).join('');
 
-    const warnings = d.warnings ?? [];
-    document.getElementById('warningsBox').innerHTML = warnings.length
-      ? warnings.map(w => `<div class="warning-box">⚠ ${escHtml(w)}</div>`).join('')
+    document.getElementById('warningsBox').innerHTML = (d.warnings ?? []).length
+      ? d.warnings.map(w => `<div class="warning-box">⚠ ${escHtml(w)}</div>`).join('')
       : '';
   }
 
-  // ── Submit handler ───────────────────────────────────────────────────────
+  // ── Shared field readers ──────────────────────────────────────────────────
+  function sharedFields() {
+    return {
+      language:      document.getElementById('language').value.trim(),
+      transcription: document.getElementById('transcription').value.trim(),
+      title:         document.getElementById('title').value.trim(),
+      artist:        document.getElementById('artist').value.trim(),
+      preferSharps:  document.getElementById('prefer_sharp_keys').checked,
+      cleanupLyrics: document.getElementById('cleanup_lyrics').checked,
+    };
+  }
+
+  // ── YouTube submit ────────────────────────────────────────────────────────
   const STATUS_MSGS = [
-    'Downloading audio…',
-    'Normalising audio…',
-    'Extracting chords…',
-    'Transcribing lyrics…',
-    'Aligning chords to lyrics…',
+    'Downloading audio…', 'Normalising audio…',
+    'Extracting chords…', 'Transcribing lyrics…', 'Aligning chords to lyrics…',
   ];
 
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    resultsEl.style.display = 'none';
+  document.getElementById('submitYt').addEventListener('click', async () => {
+    const btn = document.getElementById('submitYt');
+    const url = document.getElementById('youtube_url').value.trim();
+    if (!url) { setStatus('status', 'Please enter a YouTube URL.', 'error'); return; }
 
-    const url           = document.getElementById('youtube_url').value.trim();
-    const transcription = document.getElementById('transcription').value.trim();
-    const language      = document.getElementById('language').value.trim();
-    const title         = document.getElementById('title').value.trim();
-    const artist        = document.getElementById('artist').value.trim();
-    const preferSharps  = document.getElementById('prefer_sharp_keys').checked;
-    const cleanupLyrics = document.getElementById('cleanup_lyrics').checked;
-
-    if (!url) { setStatus('Please enter a YouTube URL.', 'error'); return; }
-
-    setLoading(STATUS_MSGS[0]);
-
-    const payload = { youtube_url: url, prefer_sharp_keys: preferSharps, cleanup_lyrics: cleanupLyrics };
-    if (transcription) payload.transcription = transcription;
-    if (language)      payload.language      = language;
-    if (title)         payload.title         = title;
-    if (artist)        payload.artist        = artist;
+    document.getElementById('results').style.display = 'none';
+    const f = sharedFields();
+    setLoading('status', btn, STATUS_MSGS[0]);
 
     let msgIdx = 0;
     const timer = setInterval(() => {
       msgIdx = Math.min(msgIdx + 1, STATUS_MSGS.length - 1);
-      setLoading(STATUS_MSGS[msgIdx]);
+      setLoading('status', btn, STATUS_MSGS[msgIdx]);
     }, 8000);
+
+    const payload = {
+      youtube_url: url,
+      prefer_sharp_keys: f.preferSharps,
+      cleanup_lyrics: f.cleanupLyrics,
+    };
+    if (f.transcription) payload.transcription = f.transcription;
+    if (f.language)      payload.language      = f.language;
+    if (f.title)         payload.title         = f.title;
+    if (f.artist)        payload.artist        = f.artist;
 
     try {
       const res  = await fetch('/process-youtube', {
-        method:  'POST',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(payload),
+        body: JSON.stringify(payload),
       });
       clearInterval(timer);
-
       const data = await res.json();
-
       if (!res.ok || !data.success) {
-        setStatus(`Error: ${data?.error?.message ?? `HTTP ${res.status}`}`, 'error');
-        clearLoading();
+        setStatus('status', `Error: ${data?.error?.message ?? `HTTP ${res.status}`}`, 'error');
+        clearLoading('status', btn);
         return;
       }
-
-      clearLoading();
+      clearLoading('status', btn);
       render(data);
-
     } catch (err) {
       clearInterval(timer);
-      clearLoading();
-      setStatus(`Network error: ${err.message}`, 'error');
+      clearLoading('status', btn);
+      setStatus('status', `Network error: ${err.message}`, 'error');
     }
   });
 
-  // ── Utilities ────────────────────────────────────────────────────────────
+  // ── Upload submit ─────────────────────────────────────────────────────────
+  document.getElementById('submitUpload').addEventListener('click', async () => {
+    const btn  = document.getElementById('submitUpload');
+    const file = fileInput.files[0];
+    if (!file) { setStatus('statusUpload', 'Please select an audio file.', 'error'); return; }
+
+    document.getElementById('results').style.display = 'none';
+    const f = sharedFields();
+    setLoading('statusUpload', btn, 'Uploading audio…');
+
+    let msgIdx = 1; // skip "Downloading" step
+    const timer = setInterval(() => {
+      msgIdx = Math.min(msgIdx + 1, STATUS_MSGS.length - 1);
+      setLoading('statusUpload', btn, STATUS_MSGS[msgIdx]);
+    }, 8000);
+
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('prefer_sharp_keys', f.preferSharps);
+    fd.append('cleanup_lyrics', f.cleanupLyrics);
+    if (f.transcription) fd.append('transcription', f.transcription);
+    if (f.language)      fd.append('language',      f.language);
+    if (f.title)         fd.append('title',         f.title);
+    if (f.artist)        fd.append('artist',        f.artist);
+
+    try {
+      const res  = await fetch('/process-audio', { method: 'POST', body: fd });
+      clearInterval(timer);
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setStatus('statusUpload', `Error: ${data?.error?.message ?? `HTTP ${res.status}`}`, 'error');
+        clearLoading('statusUpload', btn);
+        return;
+      }
+      clearLoading('statusUpload', btn);
+      render(data);
+    } catch (err) {
+      clearInterval(timer);
+      clearLoading('statusUpload', btn);
+      setStatus('statusUpload', `Network error: ${err.message}`, 'error');
+    }
+  });
+
+  // ── Utilities ─────────────────────────────────────────────────────────────
   function escHtml(str) {
     return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
   function formatDur(secs) {
