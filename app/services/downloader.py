@@ -76,8 +76,7 @@ class YouTubeDownloader:
             "--output", output_template,
             "--no-progress",
             "--quiet",
-            url,
-        ] + cookies_args
+        ] + cookies_args + [url]
 
         logger.debug(f"yt-dlp command: {' '.join(cmd)}")
 
@@ -132,8 +131,7 @@ class YouTubeDownloader:
             "--dump-json",
             "--no-playlist",
             "--quiet",
-            url,
-        ] + cookies_args
+        ] + cookies_args + [url]
         try:
             result = subprocess.run(
                 cmd,
