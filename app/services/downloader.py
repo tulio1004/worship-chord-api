@@ -1,12 +1,12 @@
 """YouTube audio downloader.
 
 Strategy (tried in order):
-  1. InvidiousDownloader — queries a public Invidious API instance to get
-     direct YouTube CDN audio URLs, then streams the file down. No cookies or
-     JS runtime needed; bypasses Railway IP blocks because the format info is
-     resolved by Invidious's server, not ours.
-  2. YtDlpDownloader — fallback using yt-dlp (works when the server IP is not
-     flagged, e.g. during local development).
+  1. PipedDownloader  — Piped is an open-source YouTube proxy with a stable
+     public API. It resolves audio stream URLs server-side, so Railway never
+     hits YouTube's extraction API directly (bypasses bot detection).
+  2. InvidiousDownloader — same idea, different proxy network. Used as second
+     fallback because public instances are less reliable.
+  3. YtDlpDownloader — last resort; works on non-flagged IPs (local dev).
 """
 
 import re
@@ -24,7 +24,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Shared types
+# Shared data types
 # ─────────────────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -52,7 +52,102 @@ def _extract_video_id(url: str) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Strategy 1: Invidious
+# Strategy 1: Piped API
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Public Piped API instances — tried in order, first success wins.
+# Piped is more reliably maintained than Invidious public instances.
+_PIPED_INSTANCES = [
+    "https://pipedapi.kavin.rocks",
+    "https://pipedapi.adminforge.de",
+    "https://piped-api.garudalinux.org",
+    "https://api.piped.projectsegfau.lt",
+    "https://pipedapi.tokhmi.xyz",
+]
+
+
+class PipedDownloader:
+    """
+    Uses the Piped public API (GET /streams/{videoId}) to get audio URLs.
+    Piped resolves format info on their servers — Railway only downloads
+    the resulting CDN stream, which bypasses YouTube's bot detection.
+    """
+
+    def download(
+        self,
+        url: str,
+        output_dir: Path,
+        max_duration: int = 600,
+    ) -> DownloadResult:
+        video_id = _extract_video_id(url)
+        logger.info(f"Trying Piped API for video: {video_id}")
+        last_error: Exception = YouTubeDownloadError("No Piped instances tried")
+
+        with httpx.Client(timeout=20, follow_redirects=True) as client:
+            for instance in _PIPED_INSTANCES:
+                try:
+                    return self._try_instance(client, instance, video_id, output_dir, max_duration)
+                except YouTubeDownloadError:
+                    raise
+                except Exception as e:
+                    logger.warning(f"Piped instance {instance} failed: {e}")
+                    last_error = e
+
+        raise RuntimeError(f"All Piped instances failed. Last: {last_error}")
+
+    def _try_instance(
+        self,
+        client: httpx.Client,
+        instance: str,
+        video_id: str,
+        output_dir: Path,
+        max_duration: int,
+    ) -> DownloadResult:
+        resp = client.get(f"{instance}/streams/{video_id}")
+        resp.raise_for_status()
+        data = resp.json()
+
+        if "error" in data:
+            raise RuntimeError(f"Piped error: {data['error']}")
+
+        duration = int(data.get("duration") or 0)
+        if duration and duration > max_duration:
+            raise YouTubeDownloadError(
+                f"Video duration {duration}s exceeds maximum {max_duration}s"
+            )
+
+        audio_streams = data.get("audioStreams", [])
+        if not audio_streams:
+            raise RuntimeError("No audio streams in Piped response")
+
+        # Pick highest bitrate
+        best = max(audio_streams, key=lambda s: int(s.get("bitrate", 0)))
+        audio_url = best["url"]
+        mime = best.get("mimeType", "audio/mp4")
+        ext = "m4a" if "mp4" in mime else "webm"
+        output_path = output_dir / f"{video_id}.{ext}"
+
+        logger.info(f"Piped: downloading {best.get('quality','?')} {ext} stream")
+
+        with client.stream("GET", audio_url, timeout=180) as stream:
+            stream.raise_for_status()
+            with open(output_path, "wb") as f:
+                for chunk in stream.iter_bytes(chunk_size=65536):
+                    f.write(chunk)
+
+        size_kb = output_path.stat().st_size // 1024
+        logger.info(f"Piped: downloaded {size_kb} KB → {output_path.name}")
+
+        return DownloadResult(
+            audio_path=output_path,
+            title=data.get("title"),
+            artist=data.get("uploader"),
+            duration_seconds=float(duration) if duration else None,
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Strategy 2: Invidious API
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Public Invidious instances — tried in order, first success wins.
@@ -261,9 +356,10 @@ class YtDlpDownloader:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class YouTubeDownloader:
-    """Tries Invidious first, falls back to yt-dlp."""
+    """Tries Piped → Invidious → yt-dlp in order."""
 
     def __init__(self):
+        self._piped = PipedDownloader()
         self._invidious = InvidiousDownloader()
         self._ytdlp = YtDlpDownloader()
 
@@ -273,11 +369,21 @@ class YouTubeDownloader:
         output_dir: Path,
         max_duration: int = 600,
     ) -> DownloadResult:
+        # Try Piped first
+        try:
+            return self._piped.download(url, output_dir, max_duration)
+        except YouTubeDownloadError:
+            raise
+        except Exception as e:
+            logger.warning(f"Piped failed ({e}), trying Invidious")
+
+        # Try Invidious second
         try:
             return self._invidious.download(url, output_dir, max_duration)
         except YouTubeDownloadError:
-            raise  # duration exceeded — don't retry
+            raise
         except Exception as e:
             logger.warning(f"Invidious failed ({e}), falling back to yt-dlp")
 
+        # Last resort: yt-dlp
         return self._ytdlp.download(url, output_dir, max_duration)
