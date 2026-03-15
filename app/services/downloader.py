@@ -1,12 +1,10 @@
 """YouTube audio downloader.
 
 Strategy (tried in order):
-  1. PipedDownloader  — Piped is an open-source YouTube proxy with a stable
-     public API. It resolves audio stream URLs server-side, so Railway never
-     hits YouTube's extraction API directly (bypasses bot detection).
-  2. InvidiousDownloader — same idea, different proxy network. Used as second
-     fallback because public instances are less reliable.
-  3. YtDlpDownloader — last resort; works on non-flagged IPs (local dev).
+  1. CobaltDownloader — cobalt.tools is a purpose-built media downloader with
+     a free public API. It handles YouTube extraction on its own servers and
+     returns a direct stream URL, bypassing Railway's IP block entirely.
+  2. YtDlpDownloader  — fallback; works on non-flagged IPs (local dev).
 """
 
 import re
@@ -52,26 +50,21 @@ def _extract_video_id(url: str) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Strategy 1: Piped API
+# Strategy 1: cobalt.tools API
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Public Piped API instances — tried in order, first success wins.
-# Piped is more reliably maintained than Invidious public instances.
-_PIPED_INSTANCES = [
-    "https://pipedapi.kavin.rocks",
-    "https://pipedapi.adminforge.de",
-    "https://piped-api.garudalinux.org",
-    "https://api.piped.projectsegfau.lt",
-    "https://pipedapi.tokhmi.xyz",
-]
-
-
-class PipedDownloader:
+class CobaltDownloader:
     """
-    Uses the Piped public API (GET /streams/{videoId}) to get audio URLs.
-    Piped resolves format info on their servers — Railway only downloads
-    the resulting CDN stream, which bypasses YouTube's bot detection.
+    Uses the cobalt.tools public API to download YouTube audio.
+
+    cobalt is a purpose-built media downloader that runs its own extraction
+    infrastructure. It accepts a YouTube URL and returns a direct stream link,
+    so Railway never touches YouTube's extraction API (no bot detection).
+
+    API docs: https://github.com/imputnet/cobalt
     """
+
+    API_URL = "https://api.cobalt.tools/"
 
     def download(
         self,
@@ -80,177 +73,55 @@ class PipedDownloader:
         max_duration: int = 600,
     ) -> DownloadResult:
         video_id = _extract_video_id(url)
-        logger.info(f"Trying Piped API for video: {video_id}")
-        last_error: Exception = YouTubeDownloadError("No Piped instances tried")
-
-        with httpx.Client(timeout=20, follow_redirects=True) as client:
-            for instance in _PIPED_INSTANCES:
-                try:
-                    return self._try_instance(client, instance, video_id, output_dir, max_duration)
-                except YouTubeDownloadError:
-                    raise
-                except Exception as e:
-                    logger.warning(f"Piped instance {instance} failed: {e}")
-                    last_error = e
-
-        raise RuntimeError(f"All Piped instances failed. Last: {last_error}")
-
-    def _try_instance(
-        self,
-        client: httpx.Client,
-        instance: str,
-        video_id: str,
-        output_dir: Path,
-        max_duration: int,
-    ) -> DownloadResult:
-        resp = client.get(f"{instance}/streams/{video_id}")
-        resp.raise_for_status()
-        data = resp.json()
-
-        if "error" in data:
-            raise RuntimeError(f"Piped error: {data['error']}")
-
-        duration = int(data.get("duration") or 0)
-        if duration and duration > max_duration:
-            raise YouTubeDownloadError(
-                f"Video duration {duration}s exceeds maximum {max_duration}s"
-            )
-
-        audio_streams = data.get("audioStreams", [])
-        if not audio_streams:
-            raise RuntimeError("No audio streams in Piped response")
-
-        # Pick highest bitrate
-        best = max(audio_streams, key=lambda s: int(s.get("bitrate", 0)))
-        audio_url = best["url"]
-        mime = best.get("mimeType", "audio/mp4")
-        ext = "m4a" if "mp4" in mime else "webm"
-        output_path = output_dir / f"{video_id}.{ext}"
-
-        logger.info(f"Piped: downloading {best.get('quality','?')} {ext} stream")
-
-        with client.stream("GET", audio_url, timeout=180) as stream:
-            stream.raise_for_status()
-            with open(output_path, "wb") as f:
-                for chunk in stream.iter_bytes(chunk_size=65536):
-                    f.write(chunk)
-
-        size_kb = output_path.stat().st_size // 1024
-        logger.info(f"Piped: downloaded {size_kb} KB → {output_path.name}")
-
-        return DownloadResult(
-            audio_path=output_path,
-            title=data.get("title"),
-            artist=data.get("uploader"),
-            duration_seconds=float(duration) if duration else None,
-        )
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Strategy 2: Invidious API
-# ─────────────────────────────────────────────────────────────────────────────
-
-# Public Invidious instances — tried in order, first success wins.
-_INVIDIOUS_INSTANCES = [
-    "https://inv.nadeko.net",
-    "https://invidious.privacydev.net",
-    "https://iv.datura.network",
-    "https://invidious.flokinet.to",
-    "https://yt.artemislena.eu",
-    "https://invidious.nerdvpn.de",
-]
-
-
-class InvidiousDownloader:
-    """
-    Uses the Invidious public API to resolve YouTube audio stream URLs.
-
-    Invidious runs its own YouTube extraction server-side and returns direct
-    CDN (googlevideo.com) URLs, which Railway can download without triggering
-    YouTube's bot detection.
-    """
-
-    def download(
-        self,
-        url: str,
-        output_dir: Path,
-        max_duration: int = 600,
-    ) -> DownloadResult:
-        video_id = _extract_video_id(url)
-        logger.info(f"Trying Invidious for video: {video_id}")
-
-        last_error: Exception = YouTubeDownloadError("No Invidious instances tried")
+        logger.info(f"Requesting cobalt.tools for video: {video_id}")
 
         with httpx.Client(timeout=30, follow_redirects=True) as client:
-            for instance in _INVIDIOUS_INSTANCES:
-                try:
-                    result = self._try_instance(
-                        client, instance, video_id, output_dir, max_duration
-                    )
-                    logger.info(f"Invidious download succeeded via {instance}")
-                    return result
-                except YouTubeDownloadError:
-                    raise  # duration exceeded — don't try other instances
-                except Exception as e:
-                    logger.warning(f"Invidious instance {instance} failed: {e}")
-                    last_error = e
-
-        raise YouTubeDownloadError(
-            f"All Invidious instances failed. Last error: {last_error}"
-        )
-
-    def _try_instance(
-        self,
-        client: httpx.Client,
-        instance: str,
-        video_id: str,
-        output_dir: Path,
-        max_duration: int,
-    ) -> DownloadResult:
-        # Fetch video metadata + format list
-        resp = client.get(
-            f"{instance}/api/v1/videos/{video_id}",
-            params={"fields": "title,author,lengthSeconds,adaptiveFormats"},
-        )
-        resp.raise_for_status()
-        data = resp.json()
-
-        duration = int(data.get("lengthSeconds") or 0)
-        if duration and duration > max_duration:
-            raise YouTubeDownloadError(
-                f"Video duration {duration}s exceeds maximum {max_duration}s"
+            resp = client.post(
+                self.API_URL,
+                json={"url": url, "downloadMode": "audio"},
+                headers={
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                },
             )
+            resp.raise_for_status()
+            data = resp.json()
 
-        # Pick best audio-only format
-        formats = [
-            f for f in data.get("adaptiveFormats", [])
-            if f.get("type", "").startswith("audio/")
-        ]
-        if not formats:
-            raise RuntimeError("No audio formats returned by Invidious")
+        status = data.get("status")
+        if status == "error":
+            code = data.get("error", {}).get("code", "unknown")
+            raise RuntimeError(f"cobalt error: {code}")
+        if status not in ("tunnel", "redirect", "stream"):
+            raise RuntimeError(f"Unexpected cobalt status: {status!r}")
 
-        best = max(formats, key=lambda f: int(f.get("bitrate", 0)))
-        audio_url = best["url"]
-        ext = "m4a" if "mp4" in best.get("type", "") else "webm"
+        audio_url = data["url"]
+
+        # Parse title from filename hint if cobalt includes it
+        filename_hint = data.get("filename") or f"{video_id}.m4a"
+        ext = Path(filename_hint).suffix.lstrip(".") or "m4a"
         output_path = output_dir / f"{video_id}.{ext}"
 
-        logger.info(f"Downloading audio stream ({best.get('bitrate',0)//1000} kbps {ext})")
+        logger.info(f"cobalt: streaming audio ({status}) → {output_path.name}")
 
-        # Stream download
-        with client.stream("GET", audio_url) as stream:
-            stream.raise_for_status()
-            with open(output_path, "wb") as f:
-                for chunk in stream.iter_bytes(chunk_size=65536):
-                    f.write(chunk)
+        with httpx.Client(timeout=180, follow_redirects=True) as dl_client:
+            with dl_client.stream("GET", audio_url) as stream:
+                stream.raise_for_status()
+                with open(output_path, "wb") as f:
+                    for chunk in stream.iter_bytes(chunk_size=65536):
+                        f.write(chunk)
 
         size_kb = output_path.stat().st_size // 1024
-        logger.info(f"Downloaded {size_kb} KB → {output_path.name}")
+        logger.info(f"cobalt: downloaded {size_kb} KB")
+
+        # cobalt doesn't return structured metadata — title comes from filename
+        raw_title = Path(filename_hint).stem.replace("_", " ").replace("-", " ")
+        title = raw_title if raw_title != video_id else None
 
         return DownloadResult(
             audio_path=output_path,
-            title=data.get("title"),
-            artist=data.get("author"),
-            duration_seconds=float(duration) if duration else None,
+            title=title or None,
+            artist=None,
+            duration_seconds=None,
         )
 
 
@@ -352,15 +223,14 @@ class YtDlpDownloader:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Facade: try Invidious, fall back to yt-dlp
+# Facade: cobalt → yt-dlp
 # ─────────────────────────────────────────────────────────────────────────────
 
 class YouTubeDownloader:
-    """Tries Piped → Invidious → yt-dlp in order."""
+    """Tries cobalt.tools first, falls back to yt-dlp."""
 
     def __init__(self):
-        self._piped = PipedDownloader()
-        self._invidious = InvidiousDownloader()
+        self._cobalt = CobaltDownloader()
         self._ytdlp = YtDlpDownloader()
 
     def download(
@@ -369,21 +239,11 @@ class YouTubeDownloader:
         output_dir: Path,
         max_duration: int = 600,
     ) -> DownloadResult:
-        # Try Piped first
         try:
-            return self._piped.download(url, output_dir, max_duration)
+            return self._cobalt.download(url, output_dir, max_duration)
         except YouTubeDownloadError:
             raise
         except Exception as e:
-            logger.warning(f"Piped failed ({e}), trying Invidious")
+            logger.warning(f"cobalt failed ({e}), falling back to yt-dlp")
 
-        # Try Invidious second
-        try:
-            return self._invidious.download(url, output_dir, max_duration)
-        except YouTubeDownloadError:
-            raise
-        except Exception as e:
-            logger.warning(f"Invidious failed ({e}), falling back to yt-dlp")
-
-        # Last resort: yt-dlp
         return self._ytdlp.download(url, output_dir, max_duration)
